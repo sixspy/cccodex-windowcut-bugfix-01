@@ -1,6 +1,10 @@
 export const ingestViewTemplate = `
 <div class="card" v-show="tab===1">
   <h2>写入事件</h2>
+  <p class="muted">
+    关窗禁写入册：已关闭窗后入账一律进迟到桶（乙路径），不进窗内合计。
+    当日口径 {{policy.policy||'—'}} · 生效日 {{policy.effective_date||'—'}}
+  </p>
   <label>窗口名</label><input v-model="form.window_name"/>
   <label>业务键</label><input v-model="form.biz_key"/>
   <label>事件时间</label><input v-model="form.event_ts"/>

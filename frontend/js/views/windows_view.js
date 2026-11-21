@@ -2,7 +2,7 @@
 export const windowsViewTemplate = `
 <div class="card wide" v-show="tab===0">
   <h2>窗口条带</h2>
-  <p class="muted">关窗占窗锁；后到争用只记审计。关窗后才能物化。</p>
+  <p class="muted">关窗占窗锁；后到争用只记审计。关窗后才能物化。关窗后入账按写入册进迟到桶，不计入窗内。</p>
   <table>
     <thead><tr><th>窗口</th><th>世代</th><th>开启</th><th>关闭</th><th>状态</th><th>操作</th></tr></thead>
     <tbody>

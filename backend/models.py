@@ -9,6 +9,8 @@ class EventIn(BaseModel):
     biz_key: str
     event_ts: str
     amount: float = Field(gt=-1e12)
+    # 可选：显式声明写入口径；与《关窗禁写入册》不一致时拒写并记「禁写偏了」
+    write_policy: str | None = None
 
 
 class WindowCreateIn(BaseModel):

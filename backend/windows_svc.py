@@ -4,11 +4,13 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from auth import AuthHeader, require_user
 from db import connect, write_audit
 from locks import release, require_lock
 from models import WindowCreateIn
+import seal_policy
 
 router = APIRouter(tags=["windows"])
 
@@ -50,8 +52,17 @@ def close_window(wid: int, authorization: AuthHeader = None):
             if not w:
                 raise HTTPException(404, "窗口不存在")
             if w["status"] == "已关闭":
-                # BUGFIX-01 埋雷：已关闭仍返回可入账暗示
-                return {"ok": True, "already": True, "accept_ingest": True}
+                # 重复关窗：口径沿用已入册记录，明示不再接收窗内入账
+                sealed = seal_policy.seal_window(conn, w, user)
+                conn.commit()
+                return {
+                    "ok": True,
+                    "already": True,
+                    "accept_ingest": False,
+                    "policy": sealed["policy"],
+                    "effective_date": sealed["effective_date"],
+                    "message": "已关闭：后续入账按关窗禁写入册走迟到桶，不再计入窗内",
+                }
             now = datetime.now().isoformat(timespec="seconds")
             token = f"seal-{wid}-{w['generation']}-{now}"
             conn.execute(
@@ -59,11 +70,70 @@ def close_window(wid: int, authorization: AuthHeader = None):
                 (token, wid),
             )
             write_audit(conn, user, "window_close", str(wid), {"seal_token": token})
+            sealed = seal_policy.seal_window(
+                conn, conn.execute("SELECT * FROM windows WHERE id=?", (wid,)).fetchone(), user
+            )
             conn.commit()
-            return {"ok": True, "seal_token": token}
+            return {
+                "ok": True,
+                "seal_token": token,
+                "policy": sealed["policy"],
+                "effective_date": sealed["effective_date"],
+            }
         finally:
             release(conn, lock_key, user)
             conn.commit()
+
+
+@router.get("/api/write-policy")
+def get_write_policy(authorization: AuthHeader = None):
+    """关窗禁写入册：当日口径 + 各已关窗封存口径。"""
+    require_user(authorization)
+    with connect() as conn:
+        base = seal_policy.ensure_registered(conn)
+        rows = conn.execute(
+            """SELECT s.*, w.name AS window_name
+               FROM window_seal_ledger s
+               JOIN windows w ON w.id=s.window_id
+               ORDER BY s.id DESC"""
+        ).fetchall()
+        conn.commit()
+        return {
+            "domain": seal_policy.DOMAIN,
+            "selected_path": seal_policy.SELECTED_PATH,
+            "policy": base["policy"],
+            "effective_date": base["effective_date"],
+            "rule": seal_policy.SELECTED_PATH_LABEL,
+            "sealed_windows": [dict(r) for r in rows],
+        }
+
+
+class PolicyChangeIn(BaseModel):
+    policy: str
+
+
+@router.post("/api/write-policy/change")
+def change_write_policy(body: PolicyChangeIn, authorization: AuthHeader = None):
+    """改口请求：当天禁止改口；异值记「禁写偏了」并拒绝。"""
+    user = require_user(authorization)
+    with connect() as conn:
+        ok, current = seal_policy.request_change(conn, body.policy, user)
+        conn.commit()
+        if not ok:
+            raise HTTPException(
+                409,
+                {
+                    "message": seal_policy.DEVIATION_NOTE,
+                    "requested": body.policy,
+                    "registered": current["policy"],
+                    "effective_date": current["effective_date"],
+                },
+            )
+        return {
+            "ok": True,
+            "policy": current["policy"],
+            "effective_date": current["effective_date"],
+        }
 
 
 @router.get("/api/windows/{wid}")

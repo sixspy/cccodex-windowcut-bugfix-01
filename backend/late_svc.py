@@ -18,6 +18,26 @@ class LatePromoteIn(BaseModel):
     target_window_name: str
 
 
+def write_closed_window_late(conn, window, biz_key: str, event_ts: str, amount: float, created_at: str) -> tuple[int, int]:
+    """乙路径写腿：events(迟到桶) + late_bucket 同事务。
+
+    由 ingest_svc 在已关窗入账时调用；调用方负责事务边界与失败回滚。
+    返回 (event_id, late_id)。
+    """
+    cur = conn.execute(
+        """INSERT INTO events(window_id,biz_key,event_ts,amount,disposition,created_at)
+           VALUES (?,?,?,?,?,?)""",
+        (None, biz_key, event_ts, amount, "迟到桶", created_at),
+    )
+    event_id = cur.lastrowid
+    late = conn.execute(
+        """INSERT INTO late_bucket(event_id,window_name,biz_key,event_ts,amount,reason,created_at)
+           VALUES (?,?,?,?,?,?,?)""",
+        (event_id, window["name"], biz_key, event_ts, amount, "关窗后到达", created_at),
+    )
+    return event_id, late.lastrowid
+
+
 @router.get("/api/late-bucket")
 def list_late(authorization: AuthHeader = None):
     require_user(authorization)

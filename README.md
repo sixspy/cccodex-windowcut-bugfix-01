@@ -38,6 +38,19 @@
 - 窗重开作废重算 vs 增量补丁合并
 - 切版旁路暂存 vs 开始瞬间拒收
 
+## 关窗禁写入册（本仓落地口径）
+
+关窗后入账的写路径已钉死为 **乙路径**，并写入 `write_policy_ledger`（当日唯一口径，当天禁止改口）：
+
+- 已关闭窗后入账 → 同一事务写 `events(disposition='迟到桶', window_id=NULL)` + `late_bucket`；任一腿失败两侧回滚，整笔不落。
+- 不进窗内合计、不写拒收凭证；「窗外且窗仍开启」的拒收是另一条规则，与本口径不混用。
+- 请求若显式携带与入册口径不同的 `write_policy`，整笔拒写，审计记 `write_policy_deviation`（禁写偏了）。
+- 关窗时按「窗 + 世代」封存口径到 `window_seal_ledger`；改口请求 `POST /api/write-policy/change` 当日一律 409。
+- 两人同时对同一已关窗入账须占 `ingest:<窗名>` 锁；后到只记争用（`contention_log`），零业务写入。
+
+五个面同态：事件列表 / 迟到桶 / 拒收凭证 / 对账 / 审计。
+口径查看：`GET /api/write-policy`。
+
 ## 启动（一键）
 
 ```powershell

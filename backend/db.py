@@ -133,6 +133,25 @@ CREATE TABLE IF NOT EXISTS reject_slips(
   reason TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS write_policy_ledger(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  domain TEXT NOT NULL,
+  policy TEXT NOT NULL,
+  effective_date TEXT NOT NULL,
+  note TEXT,
+  created_at TEXT NOT NULL,
+  UNIQUE(domain, effective_date)
+);
+CREATE TABLE IF NOT EXISTS window_seal_ledger(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  window_id INTEGER NOT NULL,
+  generation INTEGER NOT NULL,
+  policy TEXT NOT NULL,
+  effective_date TEXT NOT NULL,
+  seal_token TEXT,
+  created_at TEXT NOT NULL,
+  UNIQUE(window_id, generation)
+);
 """
 
 
@@ -255,6 +274,10 @@ def init_db() -> None:
         conn.executescript(SCHEMA)
         ensure_users(conn)
         seed_if_empty(conn)
+        import seal_policy
+
+        seal_policy.ensure_registered(conn)
+        seal_policy.backfill_closed_windows(conn)
         conn.commit()
 
 

@@ -29,6 +29,7 @@ createApp({
     const locks = ref([]);
     const holds = ref([]);
     const dash = ref({});
+    const policy = ref({});
     const form = ref({
       window_name: "W-1102",
       biz_key: "ORD-9",
@@ -112,6 +113,9 @@ createApp({
       const d = await api.get("/api/dashboard");
       if (d === null) return;
       dash.value = d.body || {};
+      const pol = await api.get("/api/write-policy");
+      if (pol === null) return;
+      policy.value = pol.body || {};
       if (windows.value.length) {
         const q = await api.get("/api/reconcile/" + windows.value[0].id);
         if (q === null) return;
@@ -209,6 +213,7 @@ createApp({
       locks,
       holds,
       dash,
+      policy,
       form,
       holdForm,
       actionErr,
